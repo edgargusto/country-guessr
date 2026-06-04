@@ -83,7 +83,6 @@
       <button id="submit" disabled>Guess</button>
       <div class="autocomplete" id="ac"></div>
     </div>
-    <div class="hint">Feedback: <span class="pill hot">hot</span> &lt; 1500&nbsp;km &nbsp; <span class="pill warm">warm</span> &lt; 3500&nbsp;km &nbsp; <span class="pill cool">cool</span> &lt; 7000&nbsp;km &nbsp; <span class="pill cold">cold</span> farther &nbsp; <span class="pill borders">borders</span> shares a border</div>
     <div class="guesses" id="guesses"></div>
     <div id="status" class="status" style="display:none"></div>
   </div>
@@ -117,11 +116,10 @@
       if (g.cca3 === target.cca3) return { kind: 'win', label: 'Correct!' };
       if ((target.borders || []).includes(g.cca3)) return { kind: 'borders', label: 'Shares a border' };
       const d = haversineKm(g.latlng, target.latlng);
-      const km = `${Math.round(d).toLocaleString()} km`;
-      if (d < 1500) return { kind: 'hot', label: `${km} — hot` };
-      if (d < 3500) return { kind: 'warm', label: `${km} — warm` };
-      if (d < 7000) return { kind: 'cool', label: `${km} — cool` };
-      return { kind: 'cold', label: `${km} — cold` };
+      if (d < 1500) return { kind: 'hot', label: 'hot' };
+      if (d < 3500) return { kind: 'warm', label: 'warm' };
+      if (d < 7000) return { kind: 'cool', label: 'cool' };
+      return { kind: 'cold', label: 'cold' };
     }
 
     async function loadData() {
