@@ -5,68 +5,253 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Country Guessr</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; background: #0f1117; color: #e5e7eb; }
-    .container { max-width: 920px; margin: 0 auto; padding: 20px; }
-    h1 { margin: 0 0 12px; font-size: 22px; }
-    .controls { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
-    .controls label { font-size: 13px; color: #94a3b8; }
-    select, input, button {
-      background: #1f2330; color: #e5e7eb; border: 1px solid #2d3344;
-      padding: 9px 12px; border-radius: 6px; font-size: 14px;
+    :root {
+      --bg: #dde1e8;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --row-hover: #eff6ff;
+      --grad: linear-gradient(95deg, #ec4899 0%, #f97316 55%, #facc15 100%);
+      --grad-soft: linear-gradient(95deg, rgba(236,72,153,0.10) 0%, rgba(249,115,22,0.10) 55%, rgba(250,204,21,0.10) 100%);
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      margin: 0; background: var(--bg); color: var(--text);
+      min-height: 100vh; -webkit-font-smoothing: antialiased;
+    }
+    .container { max-width: 980px; margin: 0 auto; padding: 24px 18px 60px; }
+
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px; gap: 12px; flex-wrap: wrap;
+    }
+    .brand {
+      font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+      background: var(--grad); -webkit-background-clip: text;
+      background-clip: text; color: transparent;
+    }
+    .stats { display: flex; gap: 8px; align-items: center; }
+    .stat {
+      background: var(--card); padding: 8px 14px; border-radius: 999px;
+      font-size: 12px; color: var(--muted); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      box-shadow: var(--shadow);
+    }
+    .stat b { color: var(--text); font-weight: 800; margin-left: 6px; font-size: 14px; }
+
+    .continent-row {
+      display: flex; gap: 10px; margin-bottom: 14px;
+      align-items: center; flex-wrap: wrap;
+    }
+    .continent-row label { font-size: 13px; color: var(--muted); font-weight: 600; }
+    select {
+      background: var(--card); color: var(--text);
+      border: none; padding: 9px 14px; border-radius: 999px;
+      font-size: 14px; font-family: inherit; font-weight: 600;
+      box-shadow: var(--shadow); cursor: pointer;
+    }
+    button.text-btn {
+      background: transparent; border: none; color: var(--muted);
+      font-weight: 600; font-size: 13px; cursor: pointer; padding: 6px 10px;
       font-family: inherit;
     }
-    button { cursor: pointer; }
-    button:hover:not(:disabled) { background: #2a3044; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    button.primary { background: #2563eb; border-color: #3b82f6; }
-    button.primary:hover:not(:disabled) { background: #1d4ed8; }
-    #map { width: 100%; height: 480px; border-radius: 8px; background: #0a0c12; }
-    .guess-row { display: flex; gap: 8px; margin: 12px 0 8px; position: relative; }
-    .guess-row input { flex: 1; }
+    button.text-btn:hover { color: var(--text); }
+
+    /* Map card */
+    .map-card {
+      background: var(--card); border-radius: 18px; padding: 8px;
+      box-shadow: var(--shadow); margin-bottom: 14px;
+    }
+    #map {
+      width: 100%; height: 480px; border-radius: 12px;
+      background: #f3f4f6; overflow: hidden;
+    }
+
+    /* Gradient guess panel */
+    .guess-panel {
+      background: var(--grad); border-radius: 18px; padding: 16px 16px 14px;
+      box-shadow: var(--shadow-lg); position: relative;
+    }
+    .guess-panel .title {
+      text-align: center; color: #fff; font-weight: 800;
+      font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase;
+      margin-bottom: 12px; text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+    .guess-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .guess-row-item {
+      background: rgba(255,255,255,0.95); border-radius: 10px;
+      padding: 11px 16px; display: flex; align-items: center;
+      justify-content: space-between; gap: 12px;
+      font-weight: 600;
+    }
+    .guess-row-item .left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .guess-row-item .flag { font-size: 22px; line-height: 1; }
+    .guess-row-item .country-name { font-size: 15px; }
+    .guess-row-item .right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .verdict-text {
+      font-weight: 800; font-size: 14px; text-transform: capitalize;
+    }
+    .verdict-text.hot { color: #dc2626; }
+    .verdict-text.warm { color: #ea580c; }
+    .verdict-text.cool { color: #0284c7; }
+    .verdict-text.cold { color: #1d4ed8; }
+    .verdict-text.borders { color: #7c3aed; }
+    .verdict-text.win { color: #16a34a; }
+    .arrow { font-size: 18px; line-height: 1; }
+    .flame { font-size: 16px; letter-spacing: -2px; }
+
+    /* Input */
+    .input-shell {
+      background: rgba(255,255,255,0.97); border-radius: 10px;
+      padding: 4px 6px 4px 16px; display: flex; align-items: center;
+      gap: 10px; position: relative;
+    }
+    .input-shell .globe { font-size: 18px; }
+    .input-shell input {
+      flex: 1; border: none; outline: none; background: transparent;
+      padding: 12px 0; font-size: 15px; font-family: inherit; color: var(--text);
+      font-weight: 500;
+    }
+    .input-shell input::placeholder { color: #9ca3af; font-weight: 500; }
+    .input-shell .submit-btn {
+      background: var(--grad); color: #fff; border: none;
+      padding: 9px 18px; border-radius: 8px; font-weight: 800;
+      font-size: 13px; cursor: pointer; font-family: inherit;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .input-shell .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
     .autocomplete {
-      position: absolute; top: calc(100% + 4px); left: 0; right: 100px;
-      background: #1f2330; border: 1px solid #2d3344; border-radius: 6px;
-      max-height: 220px; overflow-y: auto; z-index: 1000; display: none;
+      position: absolute; bottom: calc(100% + 8px); left: 0; right: 0;
+      background: var(--card); border-radius: 10px;
+      max-height: 280px; overflow-y: auto; z-index: 1000; display: none;
+      box-shadow: var(--shadow-lg);
     }
-    .autocomplete div { padding: 8px 12px; cursor: pointer; font-size: 14px; }
-    .autocomplete div:hover, .autocomplete div.active { background: #2a3044; }
-    .guesses { margin-top: 4px; }
-    .guess {
-      padding: 10px 12px; background: #1f2330; border-radius: 6px;
-      margin-bottom: 6px; display: flex; justify-content: space-between;
-      align-items: center; gap: 12px;
+    .ac-header {
+      padding: 8px 16px; font-size: 11px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.08em;
+      background: #f9fafb; border-radius: 10px 10px 0 0;
     }
-    .guess .name { font-weight: 600; }
-    .pill {
-      display: inline-block; padding: 3px 10px; border-radius: 999px;
-      font-size: 12px; font-weight: 500;
+    .ac-item {
+      padding: 10px 16px; cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; gap: 10px; font-weight: 500;
     }
-    .pill.borders { background: #b45309; color: #fff; }
-    .pill.hot { background: #dc2626; color: #fff; }
-    .pill.warm { background: #f59e0b; color: #fff; }
-    .pill.cool { background: #0ea5e9; color: #fff; }
-    .pill.cold { background: #1e40af; color: #fff; }
-    .pill.win { background: #16a34a; color: #fff; }
-    .status {
-      padding: 14px; background: #1f2330; border-radius: 8px;
-      margin-top: 10px; font-size: 15px;
+    .ac-item:hover, .ac-item.active { background: var(--row-hover); }
+    .ac-item .flag { font-size: 20px; line-height: 1; }
+
+    /* Round result card */
+    .result-card {
+      background: var(--card); border-radius: 18px; padding: 28px 24px;
+      box-shadow: var(--shadow-lg); margin-top: 8px;
     }
-    #remaining { margin-left: auto; color: #94a3b8; font-size: 13px; }
-    .loading { padding: 20px; text-align: center; color: #94a3b8; }
-    .leaflet-container { background: #0a0c12 !important; outline: none; }
+    .result-card .verdict {
+      text-align: center; font-size: 13px; color: var(--muted);
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+    .result-card .country-big {
+      text-align: center; font-size: 30px; font-weight: 800;
+      margin-bottom: 18px;
+    }
+    .result-card .country-big .flag { font-size: 30px; margin-right: 8px; }
+    .guess-list-mini {
+      font-size: 13px; color: var(--muted); font-style: italic;
+      margin-bottom: 18px; padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .guess-list-mini div { margin: 2px 0; }
+    .score-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin: 8px 0;
+    }
+    .score-row .label-big { font-size: 36px; font-weight: 800; }
+    .score-row .value-big {
+      font-size: 52px; font-weight: 800; font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+    .score-row .max-small {
+      font-size: 14px; color: var(--muted); margin-left: 4px;
+      font-style: italic;
+    }
+    .breakdown-table {
+      border-top: 1px solid var(--border); margin-top: 16px; padding-top: 4px;
+    }
+    .breakdown-row {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; font-size: 15px;
+      border-bottom: 1px solid var(--border);
+    }
+    .breakdown-row.total { font-weight: 800; font-style: italic; border-bottom: none; padding-top: 12px; }
+    .breakdown-row.subtract { color: #dc2626; font-style: italic; }
+    .next-btn-wrap { text-align: center; margin-top: 22px; }
+    .next-btn {
+      background: var(--grad); color: #fff; border: none;
+      padding: 16px 48px; border-radius: 999px; font-size: 22px; font-weight: 800;
+      cursor: pointer; font-family: inherit;
+      box-shadow: 0 8px 20px rgba(236, 72, 153, 0.35);
+      transition: transform 0.15s;
+    }
+    .next-btn:hover { transform: translateY(-1px); }
+
+    /* Final game card */
+    .final-card .total-row { text-align: center; margin: 18px 0 6px; }
+    .final-card .total-row .value-big {
+      font-size: 64px; font-weight: 900; letter-spacing: -0.03em;
+      background: var(--grad); -webkit-background-clip: text;
+      background-clip: text; color: transparent;
+    }
+    .breakdown-grid {
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      gap: 8px; margin: 22px 0 8px;
+    }
+    .round-cell {
+      background: #f9fafb; border-radius: 10px; padding: 12px 6px;
+      text-align: center; border: 1px solid var(--border);
+    }
+    .round-cell .r-num { font-size: 10px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.08em; }
+    .round-cell .r-country { font-size: 12px; margin: 4px 0; font-weight: 600; }
+    .round-cell .r-pts { font-size: 16px; font-weight: 800; }
+    .round-cell.solved .r-pts { color: #16a34a; }
+    .round-cell.missed .r-pts { color: #dc2626; }
+
+    .loading { padding: 60px; text-align: center; color: var(--muted); font-weight: 500; }
+    .leaflet-container { background: #f3f4f6 !important; outline: none; }
     .leaflet-interactive { cursor: default !important; }
-    .hint {
-      font-size: 12px; color: #64748b; margin-top: 4px;
+
+    @media (max-width: 600px) {
+      .brand { font-size: 18px; }
+      .stat { font-size: 11px; padding: 6px 10px; }
+      .stat b { font-size: 13px; }
+      #map { height: 360px; }
+      .score-row .label-big { font-size: 26px; }
+      .score-row .value-big { font-size: 38px; }
+      .final-card .total-row .value-big { font-size: 48px; }
+      .breakdown-grid { gap: 5px; }
+      .round-cell .r-country { font-size: 10px; }
+      .next-btn { font-size: 18px; padding: 14px 36px; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🌍 Country Guessr</h1>
-    <div class="controls">
-      <label for="continent">Continent:</label>
+    <div class="topbar">
+      <div class="brand">🌍 CountryGuessr</div>
+      <div class="stats">
+        <div class="stat">Round <b id="round-num">1 / 5</b></div>
+        <div class="stat">Score <b id="score-num">0</b></div>
+      </div>
+    </div>
+
+    <div class="continent-row">
+      <label for="continent">Continent</label>
       <select id="continent">
         <option value="Africa">Africa</option>
         <option value="Americas">Americas</option>
@@ -74,33 +259,58 @@
         <option value="Europe">Europe</option>
         <option value="Oceania">Oceania</option>
       </select>
-      <button id="newgame" class="primary">New game</button>
-      <span id="remaining"></span>
+      <button class="text-btn" id="newgame">↻ New game</button>
     </div>
-    <div id="map"><div class="loading">Loading map and country data…</div></div>
-    <div class="guess-row">
-      <input id="guess" placeholder="Type a country…" autocomplete="off" disabled>
-      <button id="submit" disabled>Guess</button>
-      <div class="autocomplete" id="ac"></div>
+
+    <div class="map-card">
+      <div id="map"><div class="loading">Loading map and country data…</div></div>
     </div>
-    <div class="guesses" id="guesses"></div>
-    <div id="status" class="status" style="display:none"></div>
+
+    <div id="round-ui">
+      <div class="guess-panel">
+        <div class="title" id="panel-title">Guess the shaded country</div>
+        <div class="guess-list" id="guesses"></div>
+        <div class="input-shell">
+          <span class="globe">🌐</span>
+          <input id="guess" placeholder="Guess a country…" autocomplete="off" disabled>
+          <button id="submit" class="submit-btn" disabled>Guess</button>
+          <div class="autocomplete" id="ac"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="result-ui"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/topojson-client@3"></script>
   <script>
-    const MAX_GUESSES = 6;
+    const ROUNDS_PER_GAME = 5;
+    const GUESSES_PER_ROUND = 3;
+    const ROUND_MAX = 5000;
+    const WRONG_PENALTY = 500;
 
     let countries = [];
     let byCcn3 = {};
-    let byCca3 = {};
     let geo = null;
-    let map, baseLayer, otherContinentLayer, targetLayer, guessedLayer;
+    let map, baseLayer, targetLayer, guessedLayer;
+
+    let continent = 'Africa';
+    let round = 0;
+    let totalScore = 0;
     let target = null;
     let guesses = [];
+    let usedTargets = [];
+    let roundResults = [];
 
     const norm3 = id => String(id).padStart(3, '0');
+
+    // ISO-3166 alpha-2 -> emoji flag
+    function flagEmojiFromCca2(cca2) {
+      if (!cca2 || cca2.length !== 2) return '🏳️';
+      const A = 0x1F1E6;
+      return String.fromCodePoint(...cca2.toUpperCase().split('').map(c => A + c.charCodeAt(0) - 65));
+    }
 
     function haversineKm(a, b) {
       const R = 6371;
@@ -112,19 +322,35 @@
       return 2 * R * Math.asin(Math.sqrt(x));
     }
 
+    function bearingDeg(from, to) {
+      const toRad = d => d * Math.PI / 180;
+      const toDeg = r => r * 180 / Math.PI;
+      const lat1 = toRad(from[0]), lon1 = toRad(from[1]);
+      const lat2 = toRad(to[0]), lon2 = toRad(to[1]);
+      const dLon = lon2 - lon1;
+      const y = Math.sin(dLon) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+    function arrowFor(deg) {
+      const arrows = ['⬆️','↗️','➡️','↘️','⬇️','↙️','⬅️','↖️'];
+      return arrows[Math.round(deg / 45) % 8];
+    }
+
     function feedbackFor(g) {
-      if (g.cca3 === target.cca3) return { kind: 'win', label: 'Correct!' };
-      if ((target.borders || []).includes(g.cca3)) return { kind: 'borders', label: 'Shares a border' };
+      if (g.cca3 === target.cca3) return { kind: 'win', label: 'Correct', arrow: '🎯' };
+      const arrow = arrowFor(bearingDeg(g.latlng, target.latlng));
+      if ((target.borders || []).includes(g.cca3)) return { kind: 'borders', label: 'Borders', arrow };
       const d = haversineKm(g.latlng, target.latlng);
-      if (d < 1500) return { kind: 'hot', label: 'hot' };
-      if (d < 3500) return { kind: 'warm', label: 'warm' };
-      if (d < 7000) return { kind: 'cool', label: 'cool' };
-      return { kind: 'cold', label: 'cold' };
+      if (d < 1500) return { kind: 'hot', label: 'Hot', arrow };
+      if (d < 3500) return { kind: 'warm', label: 'Warm', arrow };
+      if (d < 7000) return { kind: 'cool', label: 'Cool', arrow };
+      return { kind: 'cold', label: 'Cold', arrow };
     }
 
     async function loadData() {
       const [rcRes, worldRes] = await Promise.all([
-        fetch('https://restcountries.com/v3.1/all?fields=name,cca3,ccn3,region,latlng,borders'),
+        fetch('https://restcountries.com/v3.1/all?fields=name,cca2,cca3,ccn3,region,latlng,borders,flag'),
         fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
       ]);
       if (!rcRes.ok) throw new Error('Failed to load REST Countries');
@@ -136,104 +362,109 @@
         .filter(c => c.ccn3 && c.latlng && c.latlng.length === 2 && c.region)
         .map(c => ({
           name: c.name.common,
+          cca2: c.cca2,
           cca3: c.cca3,
           ccn3: norm3(c.ccn3),
           region: c.region,
           latlng: c.latlng,
-          borders: c.borders || []
+          borders: c.borders || [],
+          flag: c.flag || flagEmojiFromCca2(c.cca2),
         }));
       countries.sort((a, b) => a.name.localeCompare(b.name));
       byCcn3 = Object.fromEntries(countries.map(c => [c.ccn3, c]));
-      byCca3 = Object.fromEntries(countries.map(c => [c.cca3, c]));
 
       geo = topojson.feature(world, world.objects.countries);
-      // attach normalized ccn3 to features
       geo.features.forEach(f => { f._ccn3 = norm3(f.id); });
     }
 
     function initMap() {
       document.getElementById('map').innerHTML = '';
       map = L.map('map', {
-        center: [20, 0],
-        zoom: 2,
-        minZoom: 1,
-        maxZoom: 6,
-        worldCopyJump: false,
-        attributionControl: false,
-        zoomControl: true,
-        zoomSnap: 0.25,
+        center: [20, 0], zoom: 2, minZoom: 1, maxZoom: 6,
+        worldCopyJump: false, attributionControl: false,
+        zoomControl: true, zoomSnap: 0.25,
       });
-
       baseLayer = L.geoJSON(geo, {
-        style: () => ({ fillColor: '#1c2030', color: '#3b4256', weight: 0.4, fillOpacity: 0.9 }),
+        style: () => ({ fillColor: '#cbd5e1', color: '#94a3b8', weight: 0.5, fillOpacity: 0.9 }),
         interactive: false,
       }).addTo(map);
-
-      otherContinentLayer = L.geoJSON(null, {
-        style: () => ({ fillColor: '#1c2030', color: '#3b4256', weight: 0.4, fillOpacity: 0.9 }),
-        interactive: false,
-      }).addTo(map);
-
       targetLayer = L.geoJSON(null, {
-        style: () => ({ fillColor: '#ef4444', color: '#fecaca', weight: 1.2, fillOpacity: 0.9 }),
+        style: () => ({ fillColor: '#ec4899', color: '#be185d', weight: 1.4, fillOpacity: 0.85 }),
         interactive: false,
       }).addTo(map);
-
       guessedLayer = L.geoJSON(null, {
-        style: () => ({ fillColor: '#f59e0b', color: '#fbbf24', weight: 1, fillOpacity: 0.75 }),
+        style: () => ({ fillColor: '#64748b', color: '#475569', weight: 1, fillOpacity: 0.7 }),
         interactive: false,
       }).addTo(map);
     }
 
-    function continentBounds(continent) {
-      const feats = geo.features.filter(f => byCcn3[f._ccn3] && byCcn3[f._ccn3].region === continent);
-      const layer = L.geoJSON({ type: 'FeatureCollection', features: feats });
-      return layer.getBounds();
+    function continentBounds(cont) {
+      const feats = geo.features.filter(f => byCcn3[f._ccn3] && byCcn3[f._ccn3].region === cont);
+      return L.geoJSON({ type: 'FeatureCollection', features: feats }).getBounds();
     }
 
-    function newGame() {
-      const continent = document.getElementById('continent').value;
-      const pool = countries.filter(c => c.region === continent && geo.features.find(f => f._ccn3 === c.ccn3));
-      if (!pool.length) { alert('No countries available for that continent'); return; }
-      target = pool[Math.floor(Math.random() * pool.length)];
+    function pickTarget() {
+      const pool = countries.filter(c =>
+        c.region === continent &&
+        !usedTargets.includes(c.cca3) &&
+        geo.features.find(f => f._ccn3 === c.ccn3)
+      );
+      if (!pool.length) return null;
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    function startNewGame() {
+      continent = document.getElementById('continent').value;
+      round = 0;
+      totalScore = 0;
+      usedTargets = [];
+      roundResults = [];
+      document.getElementById('result-ui').innerHTML = '';
+      document.getElementById('round-ui').style.display = '';
+      startRound();
+    }
+
+    function startRound() {
+      round++;
+      target = pickTarget();
+      if (!target) { endGame(); return; }
+      usedTargets.push(target.cca3);
       guesses = [];
       document.getElementById('guesses').innerHTML = '';
-      document.getElementById('status').style.display = 'none';
+      document.getElementById('result-ui').innerHTML = '';
+      document.getElementById('round-ui').style.display = '';
       document.getElementById('guess').disabled = false;
       document.getElementById('submit').disabled = false;
       document.getElementById('guess').value = '';
+      document.getElementById('panel-title').textContent = `${GUESSES_PER_ROUND} guesses remaining`;
       document.getElementById('guess').focus();
-      updateRemaining();
+      updateStats();
 
       targetLayer.clearLayers();
       guessedLayer.clearLayers();
-
-      const targetFeature = geo.features.find(f => f._ccn3 === target.ccn3);
-      if (targetFeature) targetLayer.addData(targetFeature);
-
+      const tf = geo.features.find(f => f._ccn3 === target.ccn3);
+      if (tf) targetLayer.addData(tf);
       try {
         map.fitBounds(continentBounds(continent), { padding: [30, 30], maxZoom: 5, animate: true });
-      } catch (e) {
-        map.setView([20, 0], 2);
-      }
+      } catch { map.setView([20, 0], 2); }
     }
 
-    function updateRemaining() {
-      document.getElementById('remaining').textContent = `Guesses left: ${MAX_GUESSES - guesses.length}`;
+    function updateStats() {
+      document.getElementById('round-num').textContent = `${Math.min(round, ROUNDS_PER_GAME)} / ${ROUNDS_PER_GAME}`;
+      document.getElementById('score-num').textContent = totalScore.toLocaleString();
+      const left = Math.max(0, GUESSES_PER_ROUND - guesses.length);
+      document.getElementById('panel-title').textContent =
+        left === 0 ? 'No guesses left' : `${left} guess${left === 1 ? '' : 'es'} remaining`;
+      document.getElementById('guess').placeholder =
+        left === GUESSES_PER_ROUND ? 'Guess a country…' : `Guess a country (${left} left)…`;
     }
 
     function submitGuess() {
       const val = document.getElementById('guess').value.trim().toLowerCase();
       if (!val) return;
       const match = countries.find(c => c.name.toLowerCase() === val);
-      if (!match) {
-        alert('Pick a country from the suggestions');
-        return;
-      }
-      if (guesses.some(g => g.cca3 === match.cca3)) {
-        alert('You already guessed that one');
-        return;
-      }
+      if (!match) return;
+      if (guesses.some(g => g.cca3 === match.cca3)) return;
 
       guesses.push(match);
       const fb = feedbackFor(match);
@@ -243,35 +474,114 @@
         const f = geo.features.find(feat => feat._ccn3 === match.ccn3);
         if (f) guessedLayer.addData(f);
       }
-
       document.getElementById('guess').value = '';
       document.getElementById('ac').style.display = 'none';
-      updateRemaining();
+      updateStats();
 
-      if (fb.kind === 'win') endGame(true);
-      else if (guesses.length >= MAX_GUESSES) endGame(false);
+      if (fb.kind === 'win') {
+        const wrong = guesses.length - 1;
+        const pts = Math.max(0, ROUND_MAX - wrong * WRONG_PENALTY);
+        setTimeout(() => finishRound(true, pts, wrong), 400);
+      } else if (guesses.length >= GUESSES_PER_ROUND) {
+        setTimeout(() => finishRound(false, 0, GUESSES_PER_ROUND), 400);
+      }
     }
 
     function renderGuess(c, fb) {
       const el = document.createElement('div');
-      el.className = 'guess';
-      el.innerHTML = `<span class="name"></span><span class="pill ${fb.kind}"></span>`;
-      el.querySelector('.name').textContent = c.name;
-      el.querySelector('.pill').textContent = fb.label;
+      el.className = 'guess-row-item';
+      el.innerHTML = `
+        <div class="left">
+          <span class="flag"></span>
+          <span class="country-name"></span>
+        </div>
+        <div class="right">
+          <span class="verdict-text ${fb.kind}"></span>
+          <span class="arrow"></span>
+        </div>
+      `;
+      el.querySelector('.flag').textContent = c.flag;
+      el.querySelector('.country-name').textContent = c.name;
+      el.querySelector('.verdict-text').textContent = fb.label;
+      el.querySelector('.arrow').textContent = fb.arrow;
       document.getElementById('guesses').appendChild(el);
     }
 
-    function endGame(won) {
-      const s = document.getElementById('status');
-      s.style.display = 'block';
-      if (won) {
-        s.innerHTML = `🎉 Got it in ${guesses.length} guess${guesses.length===1?'':'es'}! It was <b></b>.`;
-      } else {
-        s.innerHTML = `Out of guesses. The country was <b></b>.`;
-      }
-      s.querySelector('b').textContent = target.name;
+    function finishRound(solved, points, wrongCount) {
+      totalScore += points;
+      roundResults.push({ country: target.name, flag: target.flag, points, solved });
+      updateStats();
       document.getElementById('guess').disabled = true;
       document.getElementById('submit').disabled = true;
+      document.getElementById('round-ui').style.display = 'none';
+      renderRoundResult(solved, points, wrongCount);
+    }
+
+    function renderRoundResult(solved, points, wrongCount) {
+      const isLast = round >= ROUNDS_PER_GAME;
+      const guessList = guesses.map((g, i) =>
+        `<div>Guess ${i + 1} — ${escapeHtml(g.name)}</div>`
+      ).join('');
+      const correctRow = solved
+        ? `<div class="breakdown-row"><span>Correct guess</span><span>+${ROUND_MAX.toLocaleString()}</span></div>`
+        : `<div class="breakdown-row subtract"><span>Did not guess</span><span>0</span></div>`;
+      const penaltyRow = (solved && wrongCount > 0)
+        ? `<div class="breakdown-row subtract"><span>${wrongCount} wrong guess${wrongCount === 1 ? '' : 'es'}</span><span>-${(wrongCount * WRONG_PENALTY).toLocaleString()}</span></div>`
+        : '';
+      document.getElementById('result-ui').innerHTML = `
+        <div class="result-card">
+          <div class="verdict">${solved ? '✅ Correct!' : '❌ Out of guesses'}</div>
+          <div class="country-big"><span class="flag">${target.flag}</span><span class="cname"></span></div>
+          <div class="guess-list-mini">${guessList}</div>
+          <div class="score-row">
+            <span class="label-big">Score:</span>
+            <span><span class="value-big">${points.toLocaleString()}</span><span class="max-small">/ ${ROUND_MAX.toLocaleString()}</span></span>
+          </div>
+          <div class="breakdown-table">
+            ${correctRow}
+            ${penaltyRow}
+            <div class="breakdown-row total"><span>Round score</span><span>${points.toLocaleString()}</span></div>
+          </div>
+          <div class="next-btn-wrap">
+            <button class="next-btn" id="next-btn">${isLast ? 'See Final Score' : 'Next Round'}</button>
+          </div>
+        </div>
+      `;
+      document.querySelector('#result-ui .cname').textContent = target.name;
+      document.getElementById('next-btn').onclick = () => {
+        if (isLast) endGame();
+        else startRound();
+      };
+    }
+
+    function endGame() {
+      document.getElementById('round-ui').style.display = 'none';
+      const max = ROUNDS_PER_GAME * ROUND_MAX;
+      const breakdownHtml = roundResults.map((r, i) => `
+        <div class="round-cell ${r.solved ? 'solved' : 'missed'}">
+          <div class="r-num">R${i + 1}</div>
+          <div class="r-country">${r.flag} ${escapeHtml(r.country)}</div>
+          <div class="r-pts">${r.points.toLocaleString()}</div>
+        </div>
+      `).join('');
+      document.getElementById('result-ui').innerHTML = `
+        <div class="result-card final-card">
+          <div class="verdict">Game Over</div>
+          <div class="total-row">
+            <div class="value-big">${totalScore.toLocaleString()}</div>
+            <div style="color:var(--muted);font-size:14px;font-style:italic">out of ${max.toLocaleString()}</div>
+          </div>
+          <div class="breakdown-grid">${breakdownHtml}</div>
+          <div class="next-btn-wrap">
+            <button class="next-btn" id="again-btn">Play Again</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('again-btn').onclick = startNewGame;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
     // ---------- autocomplete ----------
@@ -284,10 +594,13 @@
         .filter(c => c.name.toLowerCase().includes(val))
         .slice(0, 8);
       if (!matches.length) { ac.style.display = 'none'; return; }
-      ac.innerHTML = '';
+      ac.innerHTML = `<div class="ac-header">${escapeHtml(continent)}</div>`;
       matches.forEach(c => {
         const d = document.createElement('div');
-        d.textContent = c.name;
+        d.className = 'ac-item';
+        d.innerHTML = `<span class="flag"></span><span class="cname"></span>`;
+        d.querySelector('.flag').textContent = c.flag;
+        d.querySelector('.cname').textContent = c.name;
         d.dataset.name = c.name;
         d.onmousedown = (ev) => {
           ev.preventDefault();
@@ -302,7 +615,7 @@
 
     function onKey(e) {
       const ac = document.getElementById('ac');
-      const items = ac.querySelectorAll('div');
+      const items = ac.querySelectorAll('.ac-item');
       if (e.key === 'ArrowDown' && items.length) {
         e.preventDefault();
         acIndex = (acIndex + 1) % items.length;
@@ -329,16 +642,16 @@
       try {
         await loadData();
         initMap();
-        document.getElementById('newgame').onclick = newGame;
+        document.getElementById('newgame').onclick = startNewGame;
         document.getElementById('submit').onclick = submitGuess;
         document.getElementById('guess').addEventListener('input', onInput);
         document.getElementById('guess').addEventListener('keydown', onKey);
         document.addEventListener('click', (e) => {
-          if (!e.target.closest('.guess-row')) {
+          if (!e.target.closest('.input-shell')) {
             document.getElementById('ac').style.display = 'none';
           }
         });
-        newGame();
+        startNewGame();
       } catch (err) {
         document.getElementById('map').innerHTML = `<div class="loading">Failed to load: ${err.message}</div>`;
         console.error(err);
