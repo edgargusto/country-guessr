@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Country Guessr</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; margin: 0; background: #0f1117; color: #e5e7eb; }
+    .container { max-width: 920px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 12px; font-size: 22px; }
+    .controls { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+    .controls label { font-size: 13px; color: #94a3b8; }
+    select, input, button {
+      background: #1f2330; color: #e5e7eb; border: 1px solid #2d3344;
+      padding: 9px 12px; border-radius: 6px; font-size: 14px;
+      font-family: inherit;
+    }
+    button { cursor: pointer; }
+    button:hover:not(:disabled) { background: #2a3044; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.primary { background: #2563eb; border-color: #3b82f6; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    #map { width: 100%; height: 480px; border-radius: 8px; background: #0a0c12; }
+    .guess-row { display: flex; gap: 8px; margin: 12px 0 8px; position: relative; }
+    .guess-row input { flex: 1; }
+    .autocomplete {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 100px;
+      background: #1f2330; border: 1px solid #2d3344; border-radius: 6px;
+      max-height: 220px; overflow-y: auto; z-index: 1000; display: none;
+    }
+    .autocomplete div { padding: 8px 12px; cursor: pointer; font-size: 14px; }
+    .autocomplete div:hover, .autocomplete div.active { background: #2a3044; }
+    .guesses { margin-top: 4px; }
+    .guess {
+      padding: 10px 12px; background: #1f2330; border-radius: 6px;
+      margin-bottom: 6px; display: flex; justify-content: space-between;
+      align-items: center; gap: 12px;
+    }
+    .guess .name { font-weight: 600; }
+    .pill {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 500;
+    }
+    .pill.borders { background: #b45309; color: #fff; }
+    .pill.hot { background: #dc2626; color: #fff; }
+    .pill.warm { background: #f59e0b; color: #fff; }
+    .pill.cool { background: #0ea5e9; color: #fff; }
+    .pill.cold { background: #1e40af; color: #fff; }
+    .pill.win { background: #16a34a; color: #fff; }
+    .status {
+      padding: 14px; background: #1f2330; border-radius: 8px;
+      margin-top: 10px; font-size: 15px;
+    }
+    #remaining { margin-left: auto; color: #94a3b8; font-size: 13px; }
+    .loading { padding: 20px; text-align: center; color: #94a3b8; }
+    .leaflet-container { background: #0a0c12 !important; outline: none; }
+    .leaflet-interactive { cursor: default !important; }
+    .hint {
+      font-size: 12px; color: #64748b; margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🌍 Country Guessr</h1>
+    <div class="controls">
+      <label for="continent">Continent:</label>
+      <select id="continent">
+        <option value="Africa">Africa</option>
+        <option value="Americas">Americas</option>
+        <option value="Asia">Asia</option>
+        <option value="Europe">Europe</option>
+        <option value="Oceania">Oceania</option>
+      </select>
+      <button id="newgame" class="primary">New game</button>
+      <span id="remaining"></span>
+    </div>
+    <div id="map"><div class="loading">Loading map and country data…</div></div>
+    <div class="guess-row">
+      <input id="guess" placeholder="Type a country…" autocomplete="off" disabled>
+      <button id="submit" disabled>Guess</button>
+      <div class="autocomplete" id="ac"></div>
+    </div>
+    <div class="hint">Feedback: <span class="pill hot">hot</span> &lt; 1500&nbsp;km &nbsp; <span class="pill warm">warm</span> &lt; 3500&nbsp;km &nbsp; <span class="pill cool">cool</span> &lt; 7000&nbsp;km &nbsp; <span class="pill cold">cold</span> farther &nbsp; <span class="pill borders">borders</span> shares a border</div>
+    <div class="guesses" id="guesses"></div>
+    <div id="status" class="status" style="display:none"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
+  <script>
+    const MAX_GUESSES = 6;
+
+    let countries = [];
+    let byCcn3 = {};
+    let byCca3 = {};
+    let geo = null;
+    let map, baseLayer, otherContinentLayer, targetLayer, guessedLayer;
+    let target = null;
+    let guesses = [];
+
+    const norm3 = id => String(id).padStart(3, '0');
+
+    function haversineKm(a, b) {
+      const R = 6371;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(b[0] - a[0]);
+      const dLon = toRad(b[1] - a[1]);
+      const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
+      const x = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    function feedbackFor(g) {
+      if (g.cca3 === target.cca3) return { kind: 'win', label: 'Correct!' };
+      if ((target.borders || []).includes(g.cca3)) return { kind: 'borders', label: 'Shares a border' };
+      const d = haversineKm(g.latlng, target.latlng);
+      const km = `${Math.round(d).toLocaleString()} km`;
+      if (d < 1500) return { kind: 'hot', label: `${km} — hot` };
+      if (d < 3500) return { kind: 'warm', label: `${km} — warm` };
+      if (d < 7000) return { kind: 'cool', label: `${km} — cool` };
+      return { kind: 'cold', label: `${km} — cold` };
+    }
+
+    async function loadData() {
+      const [rcRes, worldRes] = await Promise.all([
+        fetch('https://restcountries.com/v3.1/all?fields=name,cca3,ccn3,region,latlng,borders'),
+        fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+      ]);
+      if (!rcRes.ok) throw new Error('Failed to load REST Countries');
+      if (!worldRes.ok) throw new Error('Failed to load world topology');
+      const rc = await rcRes.json();
+      const world = await worldRes.json();
+
+      countries = rc
+        .filter(c => c.ccn3 && c.latlng && c.latlng.length === 2 && c.region)
+        .map(c => ({
+          name: c.name.common,
+          cca3: c.cca3,
+          ccn3: norm3(c.ccn3),
+          region: c.region,
+          latlng: c.latlng,
+          borders: c.borders || []
+        }));
+      countries.sort((a, b) => a.name.localeCompare(b.name));
+      byCcn3 = Object.fromEntries(countries.map(c => [c.ccn3, c]));
+      byCca3 = Object.fromEntries(countries.map(c => [c.cca3, c]));
+
+      geo = topojson.feature(world, world.objects.countries);
+      // attach normalized ccn3 to features
+      geo.features.forEach(f => { f._ccn3 = norm3(f.id); });
+    }
+
+    function initMap() {
+      document.getElementById('map').innerHTML = '';
+      map = L.map('map', {
+        center: [20, 0],
+        zoom: 2,
+        minZoom: 1,
+        maxZoom: 6,
+        worldCopyJump: false,
+        attributionControl: false,
+        zoomControl: true,
+        zoomSnap: 0.25,
+      });
+
+      baseLayer = L.geoJSON(geo, {
+        style: () => ({ fillColor: '#1c2030', color: '#3b4256', weight: 0.4, fillOpacity: 0.9 }),
+        interactive: false,
+      }).addTo(map);
+
+      otherContinentLayer = L.geoJSON(null, {
+        style: () => ({ fillColor: '#1c2030', color: '#3b4256', weight: 0.4, fillOpacity: 0.9 }),
+        interactive: false,
+      }).addTo(map);
+
+      targetLayer = L.geoJSON(null, {
+        style: () => ({ fillColor: '#ef4444', color: '#fecaca', weight: 1.2, fillOpacity: 0.9 }),
+        interactive: false,
+      }).addTo(map);
+
+      guessedLayer = L.geoJSON(null, {
+        style: () => ({ fillColor: '#f59e0b', color: '#fbbf24', weight: 1, fillOpacity: 0.75 }),
+        interactive: false,
+      }).addTo(map);
+    }
+
+    function continentBounds(continent) {
+      const feats = geo.features.filter(f => byCcn3[f._ccn3] && byCcn3[f._ccn3].region === continent);
+      const layer = L.geoJSON({ type: 'FeatureCollection', features: feats });
+      return layer.getBounds();
+    }
+
+    function newGame() {
+      const continent = document.getElementById('continent').value;
+      const pool = countries.filter(c => c.region === continent && geo.features.find(f => f._ccn3 === c.ccn3));
+      if (!pool.length) { alert('No countries available for that continent'); return; }
+      target = pool[Math.floor(Math.random() * pool.length)];
+      guesses = [];
+      document.getElementById('guesses').innerHTML = '';
+      document.getElementById('status').style.display = 'none';
+      document.getElementById('guess').disabled = false;
+      document.getElementById('submit').disabled = false;
+      document.getElementById('guess').value = '';
+      document.getElementById('guess').focus();
+      updateRemaining();
+
+      targetLayer.clearLayers();
+      guessedLayer.clearLayers();
+
+      const targetFeature = geo.features.find(f => f._ccn3 === target.ccn3);
+      if (targetFeature) targetLayer.addData(targetFeature);
+
+      try {
+        map.fitBounds(continentBounds(continent), { padding: [30, 30], maxZoom: 5, animate: true });
+      } catch (e) {
+        map.setView([20, 0], 2);
+      }
+    }
+
+    function updateRemaining() {
+      document.getElementById('remaining').textContent = `Guesses left: ${MAX_GUESSES - guesses.length}`;
+    }
+
+    function submitGuess() {
+      const val = document.getElementById('guess').value.trim().toLowerCase();
+      if (!val) return;
+      const match = countries.find(c => c.name.toLowerCase() === val);
+      if (!match) {
+        alert('Pick a country from the suggestions');
+        return;
+      }
+      if (guesses.some(g => g.cca3 === match.cca3)) {
+        alert('You already guessed that one');
+        return;
+      }
+
+      guesses.push(match);
+      const fb = feedbackFor(match);
+      renderGuess(match, fb);
+
+      if (match.cca3 !== target.cca3) {
+        const f = geo.features.find(feat => feat._ccn3 === match.ccn3);
+        if (f) guessedLayer.addData(f);
+      }
+
+      document.getElementById('guess').value = '';
+      document.getElementById('ac').style.display = 'none';
+      updateRemaining();
+
+      if (fb.kind === 'win') endGame(true);
+      else if (guesses.length >= MAX_GUESSES) endGame(false);
+    }
+
+    function renderGuess(c, fb) {
+      const el = document.createElement('div');
+      el.className = 'guess';
+      el.innerHTML = `<span class="name"></span><span class="pill ${fb.kind}"></span>`;
+      el.querySelector('.name').textContent = c.name;
+      el.querySelector('.pill').textContent = fb.label;
+      document.getElementById('guesses').appendChild(el);
+    }
+
+    function endGame(won) {
+      const s = document.getElementById('status');
+      s.style.display = 'block';
+      if (won) {
+        s.innerHTML = `🎉 Got it in ${guesses.length} guess${guesses.length===1?'':'es'}! It was <b></b>.`;
+      } else {
+        s.innerHTML = `Out of guesses. The country was <b></b>.`;
+      }
+      s.querySelector('b').textContent = target.name;
+      document.getElementById('guess').disabled = true;
+      document.getElementById('submit').disabled = true;
+    }
+
+    // ---------- autocomplete ----------
+    let acIndex = -1;
+    function onInput(e) {
+      const val = e.target.value.trim().toLowerCase();
+      const ac = document.getElementById('ac');
+      if (!val) { ac.style.display = 'none'; return; }
+      const matches = countries
+        .filter(c => c.name.toLowerCase().includes(val))
+        .slice(0, 8);
+      if (!matches.length) { ac.style.display = 'none'; return; }
+      ac.innerHTML = '';
+      matches.forEach(c => {
+        const d = document.createElement('div');
+        d.textContent = c.name;
+        d.dataset.name = c.name;
+        d.onmousedown = (ev) => {
+          ev.preventDefault();
+          document.getElementById('guess').value = c.name;
+          ac.style.display = 'none';
+        };
+        ac.appendChild(d);
+      });
+      acIndex = -1;
+      ac.style.display = 'block';
+    }
+
+    function onKey(e) {
+      const ac = document.getElementById('ac');
+      const items = ac.querySelectorAll('div');
+      if (e.key === 'ArrowDown' && items.length) {
+        e.preventDefault();
+        acIndex = (acIndex + 1) % items.length;
+        items.forEach((d, i) => d.classList.toggle('active', i === acIndex));
+        items[acIndex].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'ArrowUp' && items.length) {
+        e.preventDefault();
+        acIndex = (acIndex - 1 + items.length) % items.length;
+        items.forEach((d, i) => d.classList.toggle('active', i === acIndex));
+        items[acIndex].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        if (acIndex >= 0 && items[acIndex]) {
+          document.getElementById('guess').value = items[acIndex].dataset.name;
+          ac.style.display = 'none';
+        } else {
+          submitGuess();
+        }
+      } else if (e.key === 'Escape') {
+        ac.style.display = 'none';
+      }
+    }
+
+    async function init() {
+      try {
+        await loadData();
+        initMap();
+        document.getElementById('newgame').onclick = newGame;
+        document.getElementById('submit').onclick = submitGuess;
+        document.getElementById('guess').addEventListener('input', onInput);
+        document.getElementById('guess').addEventListener('keydown', onKey);
+        document.addEventListener('click', (e) => {
+          if (!e.target.closest('.guess-row')) {
+            document.getElementById('ac').style.display = 'none';
+          }
+        });
+        newGame();
+      } catch (err) {
+        document.getElementById('map').innerHTML = `<div class="loading">Failed to load: ${err.message}</div>`;
+        console.error(err);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
