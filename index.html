@@ -661,31 +661,56 @@
 
     // ---------- autocomplete ----------
     let acIndex = -1;
-    function onInput(e) {
-      const val = e.target.value.trim().toLowerCase();
+    function showAutocomplete(matches) {
       const ac = document.getElementById('ac');
-      if (!val) { ac.style.display = 'none'; return; }
-      const matches = countries
-        .filter(c => c.name.toLowerCase().includes(val))
-        .slice(0, 8);
       if (!matches.length) { ac.style.display = 'none'; return; }
-      ac.innerHTML = `<div class="ac-header">${escapeHtml(continent)}</div>`;
+      const groups = {};
       matches.forEach(c => {
-        const d = document.createElement('div');
-        d.className = 'ac-item';
-        d.innerHTML = `<span class="flag"></span><span class="cname"></span>`;
-        d.querySelector('.flag').textContent = c.flag;
-        d.querySelector('.cname').textContent = c.name;
-        d.dataset.name = c.name;
-        d.onmousedown = (ev) => {
-          ev.preventDefault();
-          document.getElementById('guess').value = c.name;
-          ac.style.display = 'none';
-        };
-        ac.appendChild(d);
+        (groups[c.region] = groups[c.region] || []).push(c);
+      });
+      const continents = Object.keys(groups).sort();
+      ac.innerHTML = '';
+      continents.forEach(cont => {
+        const header = document.createElement('div');
+        header.className = 'ac-header';
+        header.textContent = cont;
+        ac.appendChild(header);
+        groups[cont]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .forEach(c => {
+            const d = document.createElement('div');
+            d.className = 'ac-item';
+            d.innerHTML = `<span class="flag"></span><span class="cname"></span>`;
+            d.querySelector('.flag').textContent = c.flag;
+            d.querySelector('.cname').textContent = c.name;
+            d.dataset.name = c.name;
+            d.onmousedown = (ev) => {
+              ev.preventDefault();
+              document.getElementById('guess').value = c.name;
+              ac.style.display = 'none';
+            };
+            ac.appendChild(d);
+          });
       });
       acIndex = -1;
       ac.style.display = 'block';
+      ac.scrollTop = 0;
+    }
+
+    function onInput(e) {
+      const val = e.target.value.trim().toLowerCase();
+      const matches = val
+        ? countries.filter(c => c.name.toLowerCase().startsWith(val))
+        : countries.slice();
+      showAutocomplete(matches);
+    }
+
+    function onFocus() {
+      const val = document.getElementById('guess').value.trim().toLowerCase();
+      const matches = val
+        ? countries.filter(c => c.name.toLowerCase().startsWith(val))
+        : countries.slice();
+      showAutocomplete(matches);
     }
 
     function onKey(e) {
@@ -720,6 +745,8 @@
         document.getElementById('newgame').onclick = startNewGame;
         document.getElementById('submit').onclick = submitGuess;
         document.getElementById('guess').addEventListener('input', onInput);
+        document.getElementById('guess').addEventListener('focus', onFocus);
+        document.getElementById('guess').addEventListener('click', onFocus);
         document.getElementById('guess').addEventListener('keydown', onKey);
         document.addEventListener('click', (e) => {
           if (!e.target.closest('.input-shell')) {
